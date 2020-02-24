@@ -11,9 +11,9 @@ import (
 var configFile string
 
 var rootCmd = &cobra.Command{
-	Use:   "acoustid",
-	Short: "AcoustID is an audio identification service",
-	SilenceUsage: true,
+	Use:           "acoustid",
+	Short:         "AcoustID is an audio identification service",
+	SilenceUsage:  true,
 	SilenceErrors: true,
 }
 
@@ -55,6 +55,6 @@ func Run() {
 	cobra.OnInitialize(func() { initConfig(logger) })
 
 	if err := rootCmd.Execute(); err != nil {
-		logger.Fatal("Command failed", zap.Error(err))
+		logger.Fatal(err.Error())
 	}
 }

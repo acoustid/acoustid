@@ -1,8 +1,7 @@
 package export
 
 type StorageConfig struct {
-	URL string
+	URL      string
 	Username string
 	Password string
 }
-

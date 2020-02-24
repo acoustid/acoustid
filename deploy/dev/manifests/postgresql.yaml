@@ -1,0 +1,112 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  namespace: acoustid-dev
+  name: postgresql
+  labels:
+    app.kubernetes.io/name: postgresql
+data:
+  create_db.sql: |
+    CREATE ROLE acoustid WITH LOGIN PASSWORD 'acoustid';
+
+    CREATE DATABASE acoustid_dev_app OWNER acoustid;
+    CREATE DATABASE acoustid_dev_fingerprint OWNER acoustid;
+    CREATE DATABASE acoustid_dev_ingest OWNER acoustid;
+
+    CREATE DATABASE acoustid_test_app OWNER acoustid;
+    CREATE DATABASE acoustid_test_fingerprint OWNER acoustid;
+    CREATE DATABASE acoustid_test_ingest OWNER acoustid;
+
+    \c acoustid_dev_fingerprint
+    CREATE EXTENSION IF NOT EXISTS "acoustid";
+
+    \c acoustid_test_fingerprint
+    CREATE EXTENSION IF NOT EXISTS "acoustid";
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: acoustid-dev
+  name: postgresql
+  labels:
+    app.kubernetes.io/name: postgresql
+spec:
+  selector:
+    app.kubernetes.io/name: postgresql
+  ports:
+    - protocol: TCP
+      port: 5432
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  namespace: acoustid-dev
+  name: postgresql
+  labels:
+    app.kubernetes.io/name: postgresql
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: acoustid-dev
+  name: postgresql
+  labels:
+    app.kubernetes.io/name: postgresql
+spec:
+  replicas: 1
+  updateStrategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: postgresql
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: postgresql
+    spec:
+      containers:
+        - name: postgresql
+          image: quay.io/acoustid/postgresql:v0.3.0
+          ports:
+            - name: postgresql
+              containerPort: 5432
+              protocol: TCP
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -h
+                - 0.0.0.0
+                - -U
+                - postgres
+          env:
+            - name: POSTGRES_USER
+              value: postgres
+            - name: POSTGRES_PASSWORD
+              value: postgres
+            - name: POSTGRES_DB
+              value: postgres
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            - name: config
+              mountPath: /docker-entrypoint-initdb.d
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: postgresql
+        - name: config
+          configMap:
+            name: postgresql
+            items:
+              - key: create_db.sql
+                path: 00_acoustid_create_db.sql
