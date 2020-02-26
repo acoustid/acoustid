@@ -21,7 +21,7 @@ func BuildDatabaseConfig(logger *zap.Logger, prefix string) (*pgx.ConnConfig, er
 	config.User = viper.GetString(prefix + "user")
 	config.Password = viper.GetString(prefix + "password")
 	config.LogLevel = pgx.LogLevelDebug
-	config.Logger = zapadapter.NewLogger(logger.With(zap.String("database", "fingerprint")))
+	config.Logger = zapadapter.NewLogger(logger.With(zap.String("package", "pgx")))
 	return config, nil
 }
 
@@ -29,7 +29,7 @@ var exportCmd = &cobra.Command{
 	Use:   "export",
 	Short: "Export database to a remote location",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		logger := zap.L()
+		logger := zap.L().With(zap.String("component", "export"))
 		defer logger.Sync()
 
 		var sc export.StorageConfig

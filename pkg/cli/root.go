@@ -42,7 +42,7 @@ func Run() {
 	loggingConfig.DisableStacktrace = true
 	logger, err := loggingConfig.Build()
 	if err != nil {
-		log.Fatalf("ERROR: Can't initialize zap logger: %v", err)
+		log.Fatalf("Can't initialize zap logger: %v", err)
 	}
 	defer logger.Sync()
 
