@@ -21,7 +21,7 @@ func BuildDatabaseConfig(logger *zap.Logger, prefix string) (*pgx.ConnConfig, er
 	config.User = viper.GetString(prefix + "user")
 	config.Password = viper.GetString(prefix + "password")
 	config.LogLevel = pgx.LogLevelDebug
-	config.Logger = zapadapter.NewLogger(logger.With(zap.String("package", "pgx")))
+	config.Logger = zapadapter.NewLogger(logger)
 	return config, nil
 }
 
@@ -29,15 +29,17 @@ var exportCmd = &cobra.Command{
 	Use:   "export",
 	Short: "Export database to a remote location",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		logger := zap.L().With(zap.String("component", "export"))
+		logger := zap.L()
 		defer logger.Sync()
 
 		var sc export.StorageConfig
-		sc.URL = viper.GetString("export.storage.url")
-		if sc.URL == "" {
-			return errors.New("missing storage url")
+		sc.Host = viper.GetString("export.storage.host")
+		if sc.Host == "" {
+			return errors.New("missing storage host")
 		}
-		sc.Username = viper.GetString("export.storage.username")
+		sc.Port = viper.GetInt("export.storage.port")
+		sc.Path = viper.GetString("export.storage.path")
+		sc.User = viper.GetString("export.storage.user")
 		sc.Password = viper.GetString("export.storage.password")
 
 		db, err := BuildDatabaseConfig(logger, "database.fingerprint.")
@@ -50,11 +52,15 @@ var exportCmd = &cobra.Command{
 }
 
 func init() {
-	exportCmd.Flags().String("storage-url", "", "URL of the WebDAV server where data files are stored")
-	exportCmd.Flags().String("storage-username", "", "Username")
+	exportCmd.Flags().String("storage-host", "", "URL of the WebDAV server where data files are stored")
+	exportCmd.Flags().Int("storage-port", 22, "")
+	exportCmd.Flags().String("storage-path", "", "")
+	exportCmd.Flags().String("storage-user", "", "Username")
 	exportCmd.Flags().String("storage-password", "", "Password")
 
-	viper.BindPFlag("export.storage.url", exportCmd.Flags().Lookup("storage-url"))
+	viper.BindPFlag("export.storage.host", exportCmd.Flags().Lookup("storage-host"))
+	viper.BindPFlag("export.storage.port", exportCmd.Flags().Lookup("storage-port"))
+	viper.BindPFlag("export.storage.path", exportCmd.Flags().Lookup("storage-path"))
 	viper.BindPFlag("export.storage.username", exportCmd.Flags().Lookup("storage-username"))
 	viper.BindPFlag("export.storage.password", exportCmd.Flags().Lookup("storage-password"))
 

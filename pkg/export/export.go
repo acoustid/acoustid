@@ -5,8 +5,9 @@ import (
 	"context"
 	"fmt"
 	"github.com/jackc/pgx/v4"
-	"github.com/studio-b12/gowebdav"
+	"github.com/pkg/sftp"
 	"go.uber.org/zap"
+	"os"
 	"io"
 	"sort"
 	"strings"
@@ -20,7 +21,7 @@ func ExportQuery(ctx context.Context, db *pgx.Conn, writer io.Writer, query stri
 	return err
 }
 
-func ExportFingerprintDeltaFile(ctx context.Context, db *pgx.Conn, writer io.Writer, startTime, endTime time.Time) error {
+func ExportFingerprintDelta(ctx context.Context, db *pgx.Conn, writer io.Writer, startTime, endTime time.Time) error {
 	startTimeStr, err := db.PgConn().EscapeString(startTime.Format(time.RFC3339))
 	if err != nil {
 		return err
@@ -34,35 +35,39 @@ func ExportFingerprintDeltaFile(ctx context.Context, db *pgx.Conn, writer io.Wri
 	return ExportQuery(ctx, db, writer, query)
 }
 
-func ExportFingerprintDelta(ctx context.Context, logger *zap.Logger, storage *gowebdav.Client, db *pgx.Conn, totalStartTime, totalEndTime time.Time) error {
+func ExportFingerprintDeltaFile(ctx context.Context, logger *zap.Logger, storage *sftp.Client, db *pgx.Conn, startTime, endTime time.Time) error {
+	logger.Info("Exporting fingerprint delta data file", zap.Time("start", startTime), zap.Time("end", endTime))
+
+	fileName := fmt.Sprintf("fingerprint.delta.%s.csv.gz", startTime.Format("2006-01"))
+	path := sftp.Join("acoustid-tmp", "public-data", fileName)
+
+	file, err := storage.Create(path)
+	if err != nil {
+		logger.Error("Failed to create file", zap.String("path", path), zap.Error(err))
+		return err
+	}
+	defer file.Close()
+
+	gzipFile := gzip.NewWriter(file)
+	defer gzipFile.Close()
+
+	err = ExportFingerprintDelta(ctx, db, gzipFile, startTime, endTime)
+	if err != nil {
+		logger.Error("Failed to export file", zap.String("path", path), zap.Error(err))
+		return err
+	}
+
+	return nil
+}
+
+func ExportFingerprintDeltaFiles(ctx context.Context, logger *zap.Logger, storage *sftp.Client, db *pgx.Conn, totalStartTime, totalEndTime time.Time) error {
 	startTime := totalStartTime
 	endTime := startTime.AddDate(0, 1, 0)
 	for !endTime.After(totalEndTime) {
-		logger.Info("Exporting fingerprint delta data file", zap.Time("start", startTime), zap.Time("end", endTime))
-
-		exportResult := make(chan error, 1)
-
-		reader, writer := io.Pipe()
-		gzipWriter := gzip.NewWriter(writer)
-
-		go func() {
-			defer gzipWriter.Close()
-			defer writer.Close()
-			exportResult <- ExportFingerprintDeltaFile(ctx, db, gzipWriter, startTime, endTime)
-		}()
-
-		err := storage.WriteStream(fmt.Sprintf("/public-data/fingerprint.delta.%s.csv.gz", startTime.Format("2006-01")), reader, 0644)
+		err := ExportFingerprintDeltaFile(ctx, logger, storage, db, startTime, endTime)
 		if err != nil {
-			logger.Error("Upload failed", zap.Error(err))
 			return err
 		}
-
-		err = <-exportResult
-		if err != nil {
-			logger.Error("Export failed", zap.Error(err))
-			return err
-		}
-
 		startTime = endTime
 		endTime = startTime.AddDate(0, 1, 0)
 	}
@@ -70,7 +75,11 @@ func ExportFingerprintDelta(ctx context.Context, logger *zap.Logger, storage *go
 }
 
 func ExportAll(logger *zap.Logger, sc StorageConfig, databaseConfig *pgx.ConnConfig) error {
-	storage := gowebdav.NewClient(sc.URL, sc.Username, sc.Password)
+	storage, err := NewStorageClient(logger, sc)
+	if err != nil {
+		return err
+	}
+	defer storage.Close()
 
 	db, err := pgx.ConnectConfig(context.Background(), databaseConfig)
 	if err != nil {
@@ -83,11 +92,11 @@ func ExportAll(logger *zap.Logger, sc StorageConfig, databaseConfig *pgx.ConnCon
 		return err
 	}
 
-	publicDataPath := "/public-data/"
+	publicDataPath := "/acoustid-tmp/public-data/"
 	files, err := storage.ReadDir(publicDataPath)
 	if err != nil {
-		if strings.Contains(err.Error(), "404 Not Found") {
-			err = storage.MkdirAll("/public-data/", 0775)
+		if err == os.ErrNotExist {
+			err = storage.MkdirAll("/acoustid-tmp/public-data/")
 			if err != nil {
 				return err
 			}
@@ -122,12 +131,18 @@ func ExportAll(logger *zap.Logger, sc StorageConfig, databaseConfig *pgx.ConnCon
 				if endTime.After(latestFingerprintDeltaStartTime) {
 					latestFingerprintDeltaStartTime = endTime
 				}
-				logger.Info("Found fingerprint delta data file", zap.String("path", path), zap.Time("start", startTime), zap.Time("end", endTime), zap.String("file", fmt.Sprintf("%v", file)))
+				logger.Info(
+					"Found fingerprint delta data file",
+					zap.String("path", path),
+					zap.Int64("size", file.Size()),
+					zap.Time("start", startTime),
+					zap.Time("end", endTime),
+				)
 			}
 		}
 	}
 
-	err = ExportFingerprintDelta(context.Background(), logger, storage, db, latestFingerprintDeltaStartTime, time.Now())
+	err = ExportFingerprintDeltaFiles(context.Background(), logger, storage, db, latestFingerprintDeltaStartTime, time.Now())
 	if err != nil {
 		return err
 	}
