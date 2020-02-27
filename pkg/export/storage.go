@@ -4,6 +4,7 @@ import (
 	"io"
 	"net"
 	"strconv"
+	"os"
 	"github.com/pkg/sftp"
 	"go.uber.org/zap"
 	"golang.org/x/crypto/ssh"
@@ -17,6 +18,15 @@ type StorageFile interface {
 	io.Closer
 }
 
+type Storage interface {
+	ReadDir(path string) ([]os.FileInfo, error)
+	Create(path string) (StorageFile, error)
+	Mkdir(path string) error
+	MkdirAll(path string) error
+	Remove(path string) error
+	Join(elem ...string) string
+}
+
 type StorageConfig struct {
 	Host     string
 	Port     int
@@ -26,6 +36,7 @@ type StorageConfig struct {
 }
 
 type StorageClient struct {
+	config *StorageConfig
 	client *sftp.Client
 	logger *zap.Logger
 }
@@ -41,7 +52,31 @@ func (c *StorageClient) Close() error {
 	return nil
 }
 
-func NewStorageClient(logger *zap.Logger, sc StorageConfig) (*sftp.Client, error) {
+func (c *StorageClient) ReadDir(path string) ([]os.FileInfo, error) {
+	return c.client.ReadDir(sftp.Join(c.config.Path, path))
+}
+
+func (c *StorageClient) Create(path string) (StorageFile, error) {
+	return c.client.Create(sftp.Join(c.config.Path, path))
+}
+
+func (c *StorageClient) Mkdir(path string) error {
+	return c.client.Mkdir(sftp.Join(c.config.Path, path))
+}
+
+func (c *StorageClient) MkdirAll(path string) error {
+	return c.client.MkdirAll(sftp.Join(c.config.Path, path))
+}
+
+func (c *StorageClient) Remove(path string) error {
+	return c.client.Remove(sftp.Join(c.config.Path, path))
+}
+
+func (c *StorageClient) Join(elem ...string) string {
+	return sftp.Join(elem...)
+}
+
+func NewStorageClient(logger *zap.Logger, sc StorageConfig) (*StorageClient, error) {
 	config := &ssh.ClientConfig{
 		User: sc.User,
 		Auth: []ssh.AuthMethod{
@@ -65,5 +100,5 @@ func NewStorageClient(logger *zap.Logger, sc StorageConfig) (*sftp.Client, error
 		return nil, err
 	}
 
-	return client, nil
+	return &StorageClient{config: &sc, client: client, logger: logger}, nil
 }

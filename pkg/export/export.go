@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"github.com/jackc/pgx/v4"
-	"github.com/pkg/sftp"
 	"go.uber.org/zap"
 	"os"
 	"io"
@@ -35,11 +34,11 @@ func ExportFingerprintDelta(ctx context.Context, db *pgx.Conn, writer io.Writer,
 	return ExportQuery(ctx, db, writer, query)
 }
 
-func ExportFingerprintDeltaFile(ctx context.Context, logger *zap.Logger, storage *sftp.Client, db *pgx.Conn, startTime, endTime time.Time) error {
+func ExportFingerprintDeltaFile(ctx context.Context, logger *zap.Logger, storage Storage, db *pgx.Conn, startTime, endTime time.Time) error {
 	logger.Info("Exporting fingerprint delta data file", zap.Time("start", startTime), zap.Time("end", endTime))
 
 	fileName := fmt.Sprintf("fingerprint.delta.%s.csv.gz", startTime.Format("2006-01"))
-	path := sftp.Join("acoustid-tmp", "public-data", fileName)
+	path := storage.Join("public-data", fileName)
 
 	file, err := storage.Create(path)
 	if err != nil {
@@ -60,7 +59,7 @@ func ExportFingerprintDeltaFile(ctx context.Context, logger *zap.Logger, storage
 	return nil
 }
 
-func ExportFingerprintDeltaFiles(ctx context.Context, logger *zap.Logger, storage *sftp.Client, db *pgx.Conn, totalStartTime, totalEndTime time.Time) error {
+func ExportFingerprintDeltaFiles(ctx context.Context, logger *zap.Logger, storage Storage, db *pgx.Conn, totalStartTime, totalEndTime time.Time) error {
 	startTime := totalStartTime
 	endTime := startTime.AddDate(0, 1, 0)
 	for !endTime.After(totalEndTime) {
@@ -92,11 +91,10 @@ func ExportAll(logger *zap.Logger, sc StorageConfig, databaseConfig *pgx.ConnCon
 		return err
 	}
 
-	publicDataPath := "/acoustid-tmp/public-data/"
-	files, err := storage.ReadDir(publicDataPath)
+	files, err := storage.ReadDir("public-data")
 	if err != nil {
 		if err == os.ErrNotExist {
-			err = storage.MkdirAll("/acoustid-tmp/public-data/")
+			err = storage.MkdirAll("public-data")
 			if err != nil {
 				return err
 			}
@@ -111,7 +109,7 @@ func ExportAll(logger *zap.Logger, sc StorageConfig, databaseConfig *pgx.ConnCon
 
 	for _, file := range files {
 		name := file.Name()
-		path := publicDataPath + name
+		path := storage.Join("public-data", name)
 		if strings.HasSuffix(name, ".tmp") {
 			logger.Info("Removing incomplete data file", zap.String("op", "delete"), zap.String("path", path))
 			storage.Remove(path)
