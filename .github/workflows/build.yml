@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    
+
       - name: Check out code
         uses: actions/checkout@v1
 
@@ -24,12 +24,12 @@ jobs:
           else
             echo ::set-output name=VERSION::$(echo $GITHUB_REF | cut -d'/' -f3)
           fi
-  
+
       - name: Build image
         run: |
           docker build -t ${{ steps.info.outputs.IMAGE }}:${{ steps.info.outputs.VERSION }} .
-  
+
       - name: Push image
         run: |
           echo ${{ secrets.QUAY_PASSWORD }} | docker login quay.io -u ${{ secrets.QUAY_USERNAME }} --password-stdin
-          docker push ${{ steps.info.outputs.IMAGE }}:${{ steps.info.outputs.VERSION }}-${{ matrix.component }}
+          docker push ${{ steps.info.outputs.IMAGE }}:${{ steps.info.outputs.VERSION }}
