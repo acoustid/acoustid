@@ -25,54 +25,87 @@ func BuildDatabaseConfig(logger *zap.Logger, prefix string) (*pgx.ConnConfig, er
 	return config, nil
 }
 
-var exportCmd = &cobra.Command{
+func BuildStorageConfig(logger *zap.Logger) (*export.StorageConfig, error) {
+	var config export.StorageConfig
+	config.Host = viper.GetString("export.storage.host")
+	if config.Host == "" {
+		return nil, errors.New("missing storage host")
+	}
+	config.Port = viper.GetInt("export.storage.port")
+	config.Path = viper.GetString("export.storage.path")
+	config.User = viper.GetString("export.storage.user")
+	config.Password = viper.GetString("export.storage.password")
+	return &config, nil
+}
+
+var dataCmd = &cobra.Command{
+	Use:   "data",
+	Short: "Commands for working with public data files",
+}
+
+var dataProxyCmd = &cobra.Command{
+	Use:   "proxy",
+	Short: "Run HTTP proxy for serving public data files",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		logger := zap.L()
+		defer logger.Sync()
+
+		storage, err := BuildStorageConfig(logger)
+		if err != nil {
+			return err
+		}
+		logger.Info("xx", zap.String("storage", storage.Host))
+
+		return export.RunProxy(logger, storage)
+	},
+}
+
+var dataExportCmd = &cobra.Command{
 	Use:   "export",
 	Short: "Export database to a remote location",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		logger := zap.L()
 		defer logger.Sync()
 
-		var sc export.StorageConfig
-		sc.Host = viper.GetString("export.storage.host")
-		if sc.Host == "" {
-			return errors.New("missing storage host")
+		storage, err := BuildStorageConfig(logger)
+		if err != nil {
+			return err
 		}
-		sc.Port = viper.GetInt("export.storage.port")
-		sc.Path = viper.GetString("export.storage.path")
-		sc.User = viper.GetString("export.storage.user")
-		sc.Password = viper.GetString("export.storage.password")
 
 		db, err := BuildDatabaseConfig(logger, "database.fingerprint.")
 		if err != nil {
 			return err
 		}
 
-		return export.ExportAll(logger, sc, db)
+		return export.ExportAll(logger, *storage, db)
 	},
 }
 
 func init() {
-	exportCmd.Flags().String("storage-host", "", "URL of the WebDAV server where data files are stored")
-	exportCmd.Flags().Int("storage-port", 22, "")
-	exportCmd.Flags().String("storage-path", "", "")
-	exportCmd.Flags().String("storage-user", "", "Username")
-	exportCmd.Flags().String("storage-password", "", "Password")
+	dataCmd.AddCommand(dataExportCmd)
+	dataCmd.AddCommand(dataProxyCmd)
 
-	viper.BindPFlag("export.storage.host", exportCmd.Flags().Lookup("storage-host"))
-	viper.BindPFlag("export.storage.port", exportCmd.Flags().Lookup("storage-port"))
-	viper.BindPFlag("export.storage.path", exportCmd.Flags().Lookup("storage-path"))
-	viper.BindPFlag("export.storage.username", exportCmd.Flags().Lookup("storage-username"))
-	viper.BindPFlag("export.storage.password", exportCmd.Flags().Lookup("storage-password"))
+	dataExportCmd.Flags().String("storage-host", "", "URL of the WebDAV server where data files are stored")
+	dataExportCmd.Flags().Int("storage-port", 22, "")
+	dataExportCmd.Flags().String("storage-path", "", "")
+	dataExportCmd.Flags().String("storage-user", "", "Username")
+	dataExportCmd.Flags().String("storage-password", "", "Password")
 
-	exportCmd.Flags().String("database-host", "127.0.0.1", "PostgreSQL host")
-	exportCmd.Flags().Int("database-port", 5432, "PostgreSQL port")
-	exportCmd.Flags().String("database-name", "", "PostgreSQL name")
-	exportCmd.Flags().String("database-username", "", "PostgreSQL username")
-	exportCmd.Flags().String("database-password", "", "PostgreSQL password")
+	viper.BindPFlag("export.storage.host", dataExportCmd.Flags().Lookup("storage-host"))
+	viper.BindPFlag("export.storage.port", dataExportCmd.Flags().Lookup("storage-port"))
+	viper.BindPFlag("export.storage.path", dataExportCmd.Flags().Lookup("storage-path"))
+	viper.BindPFlag("export.storage.username", dataExportCmd.Flags().Lookup("storage-username"))
+	viper.BindPFlag("export.storage.password", dataExportCmd.Flags().Lookup("storage-password"))
 
-	viper.BindPFlag("database.fingerprint.host", exportCmd.Flags().Lookup("database-host"))
-	viper.BindPFlag("database.fingerprint.port", exportCmd.Flags().Lookup("database-port"))
-	viper.BindPFlag("database.fingerprint.name", exportCmd.Flags().Lookup("database-name"))
-	viper.BindPFlag("database.fingerprint.username", exportCmd.Flags().Lookup("database-username"))
-	viper.BindPFlag("database.fingerprint.password", exportCmd.Flags().Lookup("database-password"))
+	dataExportCmd.Flags().String("database-host", "127.0.0.1", "PostgreSQL host")
+	dataExportCmd.Flags().Int("database-port", 5432, "PostgreSQL port")
+	dataExportCmd.Flags().String("database-name", "", "PostgreSQL name")
+	dataExportCmd.Flags().String("database-username", "", "PostgreSQL username")
+	dataExportCmd.Flags().String("database-password", "", "PostgreSQL password")
+
+	viper.BindPFlag("database.fingerprint.host", dataExportCmd.Flags().Lookup("database-host"))
+	viper.BindPFlag("database.fingerprint.port", dataExportCmd.Flags().Lookup("database-port"))
+	viper.BindPFlag("database.fingerprint.name", dataExportCmd.Flags().Lookup("database-name"))
+	viper.BindPFlag("database.fingerprint.username", dataExportCmd.Flags().Lookup("database-username"))
+	viper.BindPFlag("database.fingerprint.password", dataExportCmd.Flags().Lookup("database-password"))
 }

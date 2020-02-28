@@ -15,11 +15,14 @@ type StorageFile interface {
 	io.ReaderFrom
 	io.Writer
 	io.WriterTo
+	io.Seeker
 	io.Closer
 }
 
 type Storage interface {
+	Stat(path string) (os.FileInfo, error)
 	ReadDir(path string) ([]os.FileInfo, error)
+	Open(path string) (StorageFile, error)
 	Create(path string) (StorageFile, error)
 	Mkdir(path string) error
 	MkdirAll(path string) error
@@ -52,8 +55,16 @@ func (c *StorageClient) Close() error {
 	return nil
 }
 
+func (c *StorageClient) Stat(path string) (os.FileInfo, error) {
+	return c.client.Stat(sftp.Join(c.config.Path, path))
+}
+
 func (c *StorageClient) ReadDir(path string) ([]os.FileInfo, error) {
 	return c.client.ReadDir(sftp.Join(c.config.Path, path))
+}
+
+func (c *StorageClient) Open(path string) (StorageFile, error) {
+	return c.client.Open(sftp.Join(c.config.Path, path))
 }
 
 func (c *StorageClient) Create(path string) (StorageFile, error) {

@@ -19,7 +19,7 @@ var rootCmd = &cobra.Command{
 
 func init() {
 	rootCmd.PersistentFlags().StringVarP(&configFile, "config", "c", "", "config file")
-	rootCmd.AddCommand(exportCmd)
+	rootCmd.AddCommand(dataCmd)
 }
 
 func initConfig(logger *zap.Logger) {
