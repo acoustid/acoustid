@@ -1,16 +1,16 @@
 package export
 
 import (
-	"os"
-	"net/http"
 	"go.uber.org/zap"
+	"net/http"
+	"os"
 )
 
 type ProxyFile struct {
 	StorageFile
 	storage Storage
-	logger *zap.Logger
-	path string
+	logger  *zap.Logger
+	path    string
 }
 
 func (f *ProxyFile) Readdir(count int) ([]os.FileInfo, error) {
@@ -24,7 +24,7 @@ func (f *ProxyFile) Stat() (os.FileInfo, error) {
 }
 
 func (f *ProxyFile) Close() error {
-	if (f.StorageFile != nil) {
+	if f.StorageFile != nil {
 		return f.StorageFile.Close()
 	}
 	return nil
@@ -32,7 +32,7 @@ func (f *ProxyFile) Close() error {
 
 type ProxyFilesystem struct {
 	storage Storage
-	logger *zap.Logger
+	logger  *zap.Logger
 }
 
 func (fs *ProxyFilesystem) Open(path string) (http.File, error) {

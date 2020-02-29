@@ -1,13 +1,13 @@
 package export
 
 import (
-	"io"
-	"net"
-	"strconv"
-	"os"
 	"github.com/pkg/sftp"
 	"go.uber.org/zap"
 	"golang.org/x/crypto/ssh"
+	"io"
+	"net"
+	"os"
+	"strconv"
 )
 
 type StorageFile interface {
@@ -27,6 +27,7 @@ type Storage interface {
 	Mkdir(path string) error
 	MkdirAll(path string) error
 	Remove(path string) error
+	Rename(oldPath, newPath string) error
 	Join(elem ...string) string
 }
 
@@ -81,6 +82,10 @@ func (c *StorageClient) MkdirAll(path string) error {
 
 func (c *StorageClient) Remove(path string) error {
 	return c.client.Remove(sftp.Join(c.config.Path, path))
+}
+
+func (c *StorageClient) Rename(oldPath, newPath string) error {
+	return c.client.Rename(sftp.Join(c.config.Path, oldPath), sftp.Join(c.config.Path, newPath))
 }
 
 func (c *StorageClient) Join(elem ...string) string {

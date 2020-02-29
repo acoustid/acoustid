@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"github.com/jackc/pgx/v4"
 	"go.uber.org/zap"
-	"os"
 	"io"
-	"sort"
+	"errors"
+	"os"
 	"strings"
 	"time"
 )
@@ -76,11 +76,10 @@ func ExportFingerprintDeltaFiles(ctx context.Context, logger *zap.Logger, storag
 }
 
 func ExportFullTableFile(ctx context.Context, logger *zap.Logger, storage Storage, db *pgx.Conn, table string, columns []string) error {
-//	fileName := fmt.Sprintf("%s.full.csv.gz", table)
-//	path := storage.Join(PublicDataDir, fileName)
+	//	fileName := fmt.Sprintf("%s.full.csv.gz", table)
+	//	path := storage.Join(PublicDataDir, fileName)
 	return nil
 }
-
 
 func TableQueryBuilder(table string, columns []string) string {
 	query := "SELECT"
@@ -95,8 +94,7 @@ func TableQueryBuilder(table string, columns []string) string {
 }
 
 func TableDeltaQueryBuilder(table string, columns []string, timeColumn string, startTime time.Time, endTime time.Time) string {
-	query := (
-		TableQueryBuilder(table, columns) +
+	query := (TableQueryBuilder(table, columns) +
 		" WHERE " +
 		timeColumn + " = '" + startTime.Format(time.RFC3339) + "'" +
 		" AND " +
@@ -104,83 +102,136 @@ func TableDeltaQueryBuilder(table string, columns []string, timeColumn string, s
 	return query
 }
 
-type TableInfo struct {
-	Name string
-	Table string
-	Columns []string
-	TimeColumn string
+type exporterTableInfo struct {
+	name  string
+	query string
+	delta bool
 }
 
-type Exporter struct {
-	logger *zap.Logger
-	db *pgx.Conn
+type exporter struct {
+	logger  *zap.Logger
+	db      *pgx.Conn
 	storage Storage
-	tables []TableInfo
+	tables  []exporterTableInfo
 }
 
-func (ex *Exporter) AddTable(name string, table string, columns []string) {
-	ex.tables = append(ex.tables, TableInfo{Name: name, Table: table, Columns: columns})
+func (ex *exporter) AddTable(name string, query string, delta bool) {
+	ex.tables = append(ex.tables, exporterTableInfo{name: name, query: query, delta: delta})
 }
 
-func (ex *Exporter) AddDeltaTable(name string, table string, columns []string, timeColumn string) {
-	ex.tables = append(ex.tables, TableInfo{Name: name, Table: table, Columns: columns, TimeColumn: timeColumn})
-}
-
-func (ex *Exporter) Run() error {
-	files, err := ex.storage.ReadDir(PublicDataDir)
+func (ex *exporter) ensurePublicDataDirExists() error {
+	info, err := ex.storage.Stat(PublicDataDir)
 	if err != nil {
 		if err == os.ErrNotExist {
-			err = ex.storage.MkdirAll(PublicDataDir)
+			err = ex.storage.Mkdir(PublicDataDir)
 			if err != nil {
+				ex.logger.Error("Failed to create public data directory", zap.String("path", PublicDataDir), zap.Error(err))
 				return err
 			}
 		} else {
+			ex.logger.Error("Failed to check if public data directory exists", zap.String("path", PublicDataDir), zap.Error(err))
 			return err
 		}
 	}
+	if !info.IsDir() {
+		ex.logger.Error("The public data location exists, but is not a directory", zap.String("path", PublicDataDir))
+		return errors.New("not a directory")
+	}
+	return nil
+}
 
-	sort.Slice(files, func(i, j int) bool { return files[i].Name() < files[j].Name() })
+func (ex *exporter) ExportQuery(ctx context.Context, path string, query string) error {
+	tmpPath := fmt.Sprintf(".%s.tmp", path)
 
-	var latestFingerprintDeltaStartTime time.Time = time.Date(2010, 1, 1, 0, 0, 0, 0, time.UTC)
+	file, err := ex.storage.Create(tmpPath)
+	if err != nil {
+		ex.logger.Error("Failed to create file", zap.String("path", path), zap.Error(err))
+		return err
+	}
+	defer file.Close()
 
-	for _, file := range files {
-		name := file.Name()
-		path := ex.storage.Join("public-data", name)
-		if strings.HasSuffix(name, ".tmp") {
-			ex.logger.Info("Removing incomplete data file", zap.String("op", "delete"), zap.String("path", path))
-			ex.storage.Remove(path)
-		} else if strings.HasSuffix(name, ".csv.gz") {
-			if strings.HasPrefix(name, "fingerprint.delta.") {
-				parts := strings.Split(name, ".")
-				if len(parts) != 5 {
-					ex.logger.Warn("Could not parse file name, unexpected number of dots", zap.String("path", path))
-					continue
-				}
-				startTime, err := time.Parse("2006-01", parts[2])
-				if err != nil {
-					ex.logger.Warn("Could not parse file name, invalid date format", zap.String("path", path), zap.Error(err))
-					continue
-				}
-				endTime := startTime.AddDate(0, 1, 0)
-				if endTime.After(latestFingerprintDeltaStartTime) {
-					latestFingerprintDeltaStartTime = endTime
-				}
-				ex.logger.Info(
-					"Found fingerprint delta data file",
-					zap.String("path", path),
-					zap.Int64("size", file.Size()),
-					zap.Time("start", startTime),
-					zap.Time("end", endTime),
-				)
-			}
-		}
+	gzipFile := gzip.NewWriter(file)
+	defer gzipFile.Close()
+
+	copyQuery := fmt.Sprintf("COPY (%s) TO STDOUT", query)
+	_, err = ex.db.PgConn().CopyTo(ctx, gzipFile, copyQuery)
+	if err != nil {
+		ex.logger.Error("Failed to export file", zap.String("path", path), zap.Error(err))
+		return err
 	}
 
-	err = ExportFingerprintDeltaFiles(context.Background(), ex.logger, ex.storage, ex.db, latestFingerprintDeltaStartTime, time.Now())
+	err = ex.storage.Rename(tmpPath, path)
+	if err != nil {
+		ex.logger.Error("Failed to rename exported file", zap.String("path", path), zap.Error(err))
+		return err
+	}
+
+	return nil
+}
+
+func (ex *exporter) ExportTable(name string, query string, delta bool) error {
+	files, err := ex.storage.ReadDir(PublicDataDir)
 	if err != nil {
 		return err
 	}
 
+	fileNamePrefix := name + "."
+	if delta {
+		fileNamePrefix += "delta."
+	}
+
+	var lastCreatedAt time.Time
+	for _, file := range files {
+		fileName := file.Name()
+		path := ex.storage.Join(PublicDataDir, fileName)
+		if strings.HasPrefix(fileName, fileNamePrefix) {
+			parts := strings.SplitN(fileName, ".", 2)
+			if len(parts) != 2 {
+				ex.logger.Warn("Could not parse file name, unexpected number of dots", zap.String("path", path))
+				continue
+			}
+			createdAt, err := time.Parse("2006-01", parts[2])
+			if err != nil {
+				ex.logger.Warn("Could not parse file name, invalid date format", zap.String("path", path), zap.Error(err))
+				continue
+			}
+			if createdAt.After(lastCreatedAt) {
+				lastCreatedAt = createdAt
+			}
+		}
+	}
+
+	now := time.Now()
+
+	if delta {
+		if lastCreatedAt.IsZero() {
+			lastCreatedAt = time.Date(2010, 1, 1, 0, 0, 0, 0, time.UTC)
+		}
+	} else {
+		if !lastCreatedAt.AddDate(0, 1, 0).After(now) {
+			fileName := fmt.Sprintf("%s.full.%s.csv.gz", name, now.Format("2006-01"))
+			path := ex.storage.Join(PublicDataDir, fileName)
+			err = ex.ExportQuery(context.Background(), path, query)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (ex *exporter) Run() error {
+	err := ex.ensurePublicDataDirExists()
+	if err != nil {
+		return err
+	}
+
+	for _, table := range ex.tables {
+		err = ex.ExportTable(table.name, table.query, table.delta)
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -197,14 +248,7 @@ func ExportAll(logger *zap.Logger, sc StorageConfig, databaseConfig *pgx.ConnCon
 	}
 	defer db.Close(context.Background())
 
-	err = db.Ping(context.Background())
-	if err != nil {
-		return err
-	}
-
-	exporter := &Exporter{db: db, storage: storage, logger: logger}
-	exporter.AddDeltaTable("fingerprint", "fingerprint", []string{"id", "fingerprint", "length", "created"}, "created")
-	exporter.AddTable("track", "track", []string{"id", "gid", "created", "updated"})
-	exporter.AddTable("track_fingerprint", "fingerprint", []string{"track_id", "id", "created", "updated"})
-	return exporter.Run()
+	ex := &exporter{db: db, storage: storage, logger: logger}
+	ex.AddTable("fingerprint", ExportFingerprintDeltaQuery, true)
+	return ex.Run()
 }
