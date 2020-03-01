@@ -1,106 +1,16 @@
 package export
 
 import (
+	"bytes"
 	"compress/gzip"
 	"context"
+	"errors"
 	"fmt"
 	"github.com/jackc/pgx/v4"
 	"go.uber.org/zap"
-	"io"
-	"errors"
-	"os"
-	"strings"
+	"text/template"
 	"time"
 )
-
-const PublicDataDir = "public-data"
-
-func ExportQuery(ctx context.Context, db *pgx.Conn, writer io.Writer, query string) error {
-	copyQueryTmpl := "COPY (%s) TO STDOUT"
-	copyQuery := fmt.Sprintf(copyQueryTmpl, query)
-	_, err := db.PgConn().CopyTo(ctx, writer, copyQuery)
-	return err
-}
-
-func ExportFingerprintDelta(ctx context.Context, db *pgx.Conn, writer io.Writer, startTime, endTime time.Time) error {
-	startTimeStr, err := db.PgConn().EscapeString(startTime.Format(time.RFC3339))
-	if err != nil {
-		return err
-	}
-	endTimeStr, err := db.PgConn().EscapeString(endTime.Format(time.RFC3339))
-	if err != nil {
-		return err
-	}
-	queryTmpl := "SELECT 'I' AS op, id, length, fingerprint, created FROM fingerprint WHERE created >= '%s' AND created < '%s'"
-	query := fmt.Sprintf(queryTmpl, startTimeStr, endTimeStr)
-	return ExportQuery(ctx, db, writer, query)
-}
-
-func ExportFingerprintDeltaFile(ctx context.Context, logger *zap.Logger, storage Storage, db *pgx.Conn, startTime, endTime time.Time) error {
-	logger.Info("Exporting fingerprint delta data file", zap.Time("start", startTime), zap.Time("end", endTime))
-
-	fileName := fmt.Sprintf("fingerprint.delta.%s.csv.gz", startTime.Format("2006-01"))
-	path := storage.Join("public-data", fileName)
-
-	file, err := storage.Create(path)
-	if err != nil {
-		logger.Error("Failed to create file", zap.String("path", path), zap.Error(err))
-		return err
-	}
-	defer file.Close()
-
-	gzipFile := gzip.NewWriter(file)
-	defer gzipFile.Close()
-
-	err = ExportFingerprintDelta(ctx, db, gzipFile, startTime, endTime)
-	if err != nil {
-		logger.Error("Failed to export file", zap.String("path", path), zap.Error(err))
-		return err
-	}
-
-	return nil
-}
-
-func ExportFingerprintDeltaFiles(ctx context.Context, logger *zap.Logger, storage Storage, db *pgx.Conn, totalStartTime, totalEndTime time.Time) error {
-	startTime := totalStartTime
-	endTime := startTime.AddDate(0, 1, 0)
-	for !endTime.After(totalEndTime) {
-		err := ExportFingerprintDeltaFile(ctx, logger, storage, db, startTime, endTime)
-		if err != nil {
-			return err
-		}
-		startTime = endTime
-		endTime = startTime.AddDate(0, 1, 0)
-	}
-	return nil
-}
-
-func ExportFullTableFile(ctx context.Context, logger *zap.Logger, storage Storage, db *pgx.Conn, table string, columns []string) error {
-	//	fileName := fmt.Sprintf("%s.full.csv.gz", table)
-	//	path := storage.Join(PublicDataDir, fileName)
-	return nil
-}
-
-func TableQueryBuilder(table string, columns []string) string {
-	query := "SELECT"
-	for i, column := range columns {
-		if i > 0 {
-			query += ","
-		}
-		query += " " + column
-	}
-	query += " FROM " + table
-	return query
-}
-
-func TableDeltaQueryBuilder(table string, columns []string, timeColumn string, startTime time.Time, endTime time.Time) string {
-	query := (TableQueryBuilder(table, columns) +
-		" WHERE " +
-		timeColumn + " = '" + startTime.Format(time.RFC3339) + "'" +
-		" AND " +
-		timeColumn + " = '" + endTime.Format(time.RFC3339) + "'")
-	return query
-}
 
 type exporterTableInfo struct {
 	name  string
@@ -119,25 +29,24 @@ func (ex *exporter) AddTable(name string, query string, delta bool) {
 	ex.tables = append(ex.tables, exporterTableInfo{name: name, query: query, delta: delta})
 }
 
-func (ex *exporter) ensurePublicDataDirExists() error {
-	info, err := ex.storage.Stat(PublicDataDir)
+func (ex *exporter) RenderQueryTemplate(queryTmpl string, startTime, endTime time.Time) (string, error) {
+	tmplCtx := QueryContext{
+		StartTime: startTime.Format(time.RFC3339),
+		EndTime:   endTime.Format(time.RFC3339),
+	}
+
+	tmpl, err := template.New("query").Parse(queryTmpl)
 	if err != nil {
-		if err == os.ErrNotExist {
-			err = ex.storage.Mkdir(PublicDataDir)
-			if err != nil {
-				ex.logger.Error("Failed to create public data directory", zap.String("path", PublicDataDir), zap.Error(err))
-				return err
-			}
-		} else {
-			ex.logger.Error("Failed to check if public data directory exists", zap.String("path", PublicDataDir), zap.Error(err))
-			return err
-		}
+		return "", err
 	}
-	if !info.IsDir() {
-		ex.logger.Error("The public data location exists, but is not a directory", zap.String("path", PublicDataDir))
-		return errors.New("not a directory")
+
+	var buf bytes.Buffer
+	err = tmpl.Execute(&buf, &tmplCtx)
+	if err != nil {
+		return "", err
 	}
-	return nil
+
+	return buf.String(), nil
 }
 
 func (ex *exporter) ExportQuery(ctx context.Context, path string, query string) error {
@@ -169,65 +78,69 @@ func (ex *exporter) ExportQuery(ctx context.Context, path string, query string) 
 	return nil
 }
 
-func (ex *exporter) ExportTable(name string, query string, delta bool) error {
-	files, err := ex.storage.ReadDir(PublicDataDir)
+func (ex *exporter) ExportTableFull(now time.Time, name string, query string) error {
+	return errors.New("not implemented")
+}
+
+func (ex *exporter) ExportDailyFile(name string, queryTmpl string, startTime, endTime time.Time) error {
+	file := fmt.Sprintf("%s.daily.%s.csv.gz", name, startTime.Format("2006-01-02"))
+	directory := ex.storage.Join("public-data", startTime.Format("2006"), startTime.Format("2006-01"))
+	path := ex.storage.Join(directory, file)
+
+	logger := ex.logger.With(zap.String("path", path))
+	defer logger.Sync()
+
+	fileExists, err := CheckFileExists(ex.storage, path)
 	if err != nil {
+		logger.Error("Failed to check if file exists", zap.Error(err))
+		return err
+	}
+	if fileExists {
+		logger.Debug("File already exists")
+		return nil
+	}
+
+	err = EnsureDirExists(ex.storage, directory)
+	if err != nil {
+		logger.Error("Failed to create parent directory", zap.Error(err))
 		return err
 	}
 
-	fileNamePrefix := name + "."
-	if delta {
-		fileNamePrefix += "delta."
+	query, err := ex.RenderQueryTemplate(queryTmpl, startTime, endTime)
+	if err != nil {
+		logger.Error("Failed to render query template", zap.Error(err))
+		return err
 	}
 
-	var lastCreatedAt time.Time
-	for _, file := range files {
-		fileName := file.Name()
-		path := ex.storage.Join(PublicDataDir, fileName)
-		if strings.HasPrefix(fileName, fileNamePrefix) {
-			parts := strings.SplitN(fileName, ".", 2)
-			if len(parts) != 2 {
-				ex.logger.Warn("Could not parse file name, unexpected number of dots", zap.String("path", path))
-				continue
-			}
-			createdAt, err := time.Parse("2006-01", parts[2])
-			if err != nil {
-				ex.logger.Warn("Could not parse file name, invalid date format", zap.String("path", path), zap.Error(err))
-				continue
-			}
-			if createdAt.After(lastCreatedAt) {
-				lastCreatedAt = createdAt
-			}
-		}
+	err = ex.ExportQuery(context.Background(), path, query)
+	if err != nil {
+		logger.Error("Failed to export file", zap.Error(err))
+		return err
 	}
 
-	now := time.Now()
+	return nil
+}
 
-	if delta {
-		if lastCreatedAt.IsZero() {
-			lastCreatedAt = time.Date(2010, 1, 1, 0, 0, 0, 0, time.UTC)
+func (ex *exporter) ExportDailyFiles(name string, queryTmpl string, endTime time.Time, dayCount int) error {
+	endTime = time.Date(endTime.Year(), endTime.Month(), endTime.Day(), 0, 0, 0, 0, endTime.Location())
+	for i := 0; i < dayCount; i++ {
+		startTime := endTime.AddDate(0, 0, -1)
+		err := ex.ExportDailyFile(name, queryTmpl, startTime, endTime)
+		if err != nil {
+			return err
 		}
-	} else {
-		if !lastCreatedAt.AddDate(0, 1, 0).After(now) {
-			fileName := fmt.Sprintf("%s.full.%s.csv.gz", name, now.Format("2006-01"))
-			path := ex.storage.Join(PublicDataDir, fileName)
-			err = ex.ExportQuery(context.Background(), path, query)
-			if err != nil {
-				return err
-			}
-		}
+		endTime = startTime
 	}
 	return nil
 }
 
 func (ex *exporter) Run() error {
-	err := ex.ensurePublicDataDirExists()
-	if err != nil {
-		return err
-	}
-
+	now := time.Now()
 	for _, table := range ex.tables {
-		err = ex.ExportTable(table.name, table.query, table.delta)
+		var err error
+		if table.delta {
+			err = ex.ExportDailyFiles(table.name, table.query, now, 30)
+		}
 		if err != nil {
 			return err
 		}

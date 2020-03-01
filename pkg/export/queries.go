@@ -1,7 +1,12 @@
 package export
 
+type QueryContext struct {
+	StartTime string
+	EndTime   string
+}
+
 const ExportFingerprintDeltaQuery = `
 SELECT id, fingerprint, length, created
 FROM fingerprint
-WHERE created >= '{{startTime}}' AND created < '{{endTime}}'
+WHERE created >= '{{.StartTime}}' AND created < '{{.EndTime}}'
 `

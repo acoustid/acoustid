@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"errors"
 	"strconv"
 )
 
@@ -117,4 +118,33 @@ func NewStorageClient(logger *zap.Logger, sc StorageConfig) (*StorageClient, err
 	}
 
 	return &StorageClient{config: &sc, client: client, logger: logger}, nil
+}
+
+func CheckFileExists(storage Storage, path string) (bool, error) {
+	_, err := storage.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+func EnsureDirExists(storage Storage, path string) error {
+	info, err := storage.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			err = storage.MkdirAll(path)
+			if err != nil {
+				return err
+			}
+		} else {
+			return err
+		}
+	}
+	if !info.IsDir() {
+		return errors.New("not a directory")
+	}
+	return nil
 }
