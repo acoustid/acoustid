@@ -135,10 +135,7 @@ func EnsureDirExists(storage Storage, path string) error {
 	info, err := storage.Stat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			err = storage.MkdirAll(path)
-			if err != nil {
-				return err
-			}
+			return storage.MkdirAll(path)
 		} else {
 			return err
 		}

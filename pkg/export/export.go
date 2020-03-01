@@ -50,7 +50,7 @@ func (ex *exporter) RenderQueryTemplate(queryTmpl string, startTime, endTime tim
 }
 
 func (ex *exporter) ExportQuery(ctx context.Context, path string, query string) error {
-	tmpPath := fmt.Sprintf(".%s.tmp", path)
+	tmpPath := fmt.Sprintf("%s.tmp", path)
 
 	file, err := ex.storage.Create(tmpPath)
 	if err != nil {
@@ -62,7 +62,7 @@ func (ex *exporter) ExportQuery(ctx context.Context, path string, query string) 
 	gzipFile := gzip.NewWriter(file)
 	defer gzipFile.Close()
 
-	copyQuery := fmt.Sprintf("COPY (%s) TO STDOUT", query)
+	copyQuery := fmt.Sprintf("COPY (%s) TO STDOUT WITH (FORMAT csv, HEADER)", query)
 	_, err = ex.db.PgConn().CopyTo(ctx, gzipFile, copyQuery)
 	if err != nil {
 		ex.logger.Error("Failed to export file", zap.String("path", path), zap.Error(err))
@@ -87,7 +87,7 @@ func (ex *exporter) ExportDailyFile(name string, queryTmpl string, startTime, en
 	directory := ex.storage.Join("public-data", startTime.Format("2006"), startTime.Format("2006-01"))
 	path := ex.storage.Join(directory, file)
 
-	logger := ex.logger.With(zap.String("path", path))
+	logger := ex.logger.With(zap.String("name", name), zap.String("path", path))
 	defer logger.Sync()
 
 	fileExists, err := CheckFileExists(ex.storage, path)
@@ -99,6 +99,8 @@ func (ex *exporter) ExportDailyFile(name string, queryTmpl string, startTime, en
 		logger.Debug("File already exists")
 		return nil
 	}
+
+	logger.Info("Exporting file")
 
 	err = EnsureDirExists(ex.storage, directory)
 	if err != nil {
