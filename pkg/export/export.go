@@ -62,6 +62,20 @@ func (ex *exporter) ExportQuery(ctx context.Context, path string, query string) 
 	gzipFile := gzip.NewWriter(file)
 	defer gzipFile.Close()
 
+	explainQuery := fmt.Sprintf("EXPLAIN %s", query)
+	rows, err := ex.db.Query(context.Background(), explainQuery)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var plan string
+		err = rows.Scan(&plan)
+		if err != nil {
+			return err
+		}
+		ex.logger.Info("Explain query", zap.String("query", query), zap.String("plan", plan))
+	}
+
 	copyQuery := fmt.Sprintf("COPY (%s) TO STDOUT WITH (FORMAT csv, HEADER)", query)
 	_, err = ex.db.PgConn().CopyTo(ctx, gzipFile, copyQuery)
 	if err != nil {
