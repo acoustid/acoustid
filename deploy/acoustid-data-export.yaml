@@ -1,0 +1,28 @@
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: acoustid-data-export
+spec:
+  schedule: "*/10 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: data-export
+            image: quay.io/acoustid/acoustid:master
+            imagePullPolicy: Always
+            args:
+            - acoustid
+            - data
+            - export
+            - -c
+            - /etc/acoustid/config.yaml
+            volumeMounts:
+            - mountPath: /etc/acoustid
+              name: config
+          volumes:
+          - name: config
+            secret:
+              secretName: acoustid-config
