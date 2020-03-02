@@ -326,9 +326,7 @@ ALTER TABLE ONLY public.track_puid
 
 
 
-CREATE INDEX fingerprint_idx_created ON public.fingerprint (created);
-
-CREATE INDEX fingerprint_idx_length ON public.fingerprint (length);
+CREATE INDEX fingerprint_idx_length ON public.fingerprint USING btree (length);
 
 
 
