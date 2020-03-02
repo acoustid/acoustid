@@ -88,7 +88,7 @@ func (ex *exporter) ExportQuery(ctx context.Context, path string, query string) 
 	bufferedFile := bufio.NewWriterSize(file, bufferSize)
 	gzipFile := gzip.NewWriter(bufferedFile)
 
-	copyQuery := fmt.Sprintf("COPY (%s) TO STDOUT WITH (FORMAT csv, HEADER)", query)
+	copyQuery := fmt.Sprintf("COPY (SELECT row_to_json(r) FROM (%s) r) TO STDOUT", query)
 	_, err = ex.db.PgConn().CopyTo(ctx, gzipFile, copyQuery)
 	if err != nil {
 		logger.Error("Failed to export file", zap.Error(err))
@@ -129,7 +129,7 @@ func (ex *exporter) ExportTableFull(now time.Time, name string, query string) er
 }
 
 func (ex *exporter) ExportDailyFile(name string, queryTmpl string, startTime, endTime time.Time) error {
-	file := fmt.Sprintf("%s.daily.%s.csv.gz", name, startTime.Format("2006-01-02"))
+	file := fmt.Sprintf("%s.daily.%s.jsonl.gz", name, startTime.Format("2006-01-02"))
 	directory := ex.storage.Join("public-data", startTime.Format("2006"), startTime.Format("2006-01"))
 	path := ex.storage.Join(directory, file)
 
