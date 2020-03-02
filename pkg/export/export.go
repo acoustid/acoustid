@@ -212,5 +212,6 @@ func ExportAll(logger *zap.Logger, sc StorageConfig, databaseConfig *pgx.ConnCon
 
 	ex := &exporter{db: db, storage: storage, logger: logger}
 	ex.AddTable("fingerprint", ExportFingerprintDeltaQuery, true)
+	ex.AddTable("meta", ExportMetaDeltaQuery, true)
 	return ex.Run()
 }
