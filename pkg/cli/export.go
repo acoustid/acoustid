@@ -20,6 +20,7 @@ func BuildDatabaseConfig(logger *zap.Logger, prefix string) (*pgx.ConnConfig, er
 	config.Database = viper.GetString(prefix + "name")
 	config.User = viper.GetString(prefix + "user")
 	config.Password = viper.GetString(prefix + "password")
+	config.PreferSimpleProtocol = true
 	config.LogLevel = pgx.LogLevelDebug
 	config.Logger = zapadapter.NewLogger(logger)
 	return config, nil

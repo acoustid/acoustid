@@ -1,13 +1,13 @@
 package export
 
 import (
+	"errors"
 	"github.com/pkg/sftp"
 	"go.uber.org/zap"
 	"golang.org/x/crypto/ssh"
 	"io"
 	"net"
 	"os"
-	"errors"
 	"strconv"
 )
 

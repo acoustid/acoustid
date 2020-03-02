@@ -1,6 +1,7 @@
 package export
 
 import (
+	"bufio"
 	"bytes"
 	"compress/gzip"
 	"context"
@@ -11,6 +12,8 @@ import (
 	"text/template"
 	"time"
 )
+
+const bufferSize = 1024 * 16
 
 type exporterTableInfo struct {
 	name  string
@@ -59,27 +62,25 @@ func (ex *exporter) ExportQuery(ctx context.Context, path string, query string) 
 	}
 	defer file.Close()
 
-	gzipFile := gzip.NewWriter(file)
-	defer gzipFile.Close()
+	bufferedFile := bufio.NewWriterSize(file, bufferSize)
 
-	explainQuery := fmt.Sprintf("EXPLAIN %s", query)
-	rows, err := ex.db.Query(context.Background(), explainQuery)
-	if err != nil {
-		return err
-	}
-	for rows.Next() {
-		var plan string
-		err = rows.Scan(&plan)
-		if err != nil {
-			return err
-		}
-		ex.logger.Info("Explain query", zap.String("query", query), zap.String("plan", plan))
-	}
+	gzipFile := gzip.NewWriter(bufferedFile)
+	defer gzipFile.Close()
 
 	copyQuery := fmt.Sprintf("COPY (%s) TO STDOUT WITH (FORMAT csv, HEADER)", query)
 	_, err = ex.db.PgConn().CopyTo(ctx, gzipFile, copyQuery)
 	if err != nil {
 		ex.logger.Error("Failed to export file", zap.String("path", path), zap.Error(err))
+		return err
+	}
+
+	err = gzipFile.Flush()
+	if err != nil {
+		return err
+	}
+
+	err = bufferedFile.Flush()
+	if err != nil {
 		return err
 	}
 
