@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"github.com/jackc/pgx/v4"
 	"go.uber.org/zap"
+	"math/rand"
 	"text/template"
 	"time"
 )
@@ -53,7 +54,7 @@ func (ex *exporter) RenderQueryTemplate(queryTmpl string, startTime, endTime tim
 }
 
 func (ex *exporter) ExportQuery(ctx context.Context, path string, query string) error {
-	tempPath := fmt.Sprintf("%s.tmp", path)
+	tempPath := fmt.Sprintf("%s.%d.tmp", path, rand.Int())
 
 	logger := ex.logger.With(zap.String("path", path))
 
