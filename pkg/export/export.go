@@ -53,42 +53,73 @@ func (ex *exporter) RenderQueryTemplate(queryTmpl string, startTime, endTime tim
 }
 
 func (ex *exporter) ExportQuery(ctx context.Context, path string, query string) error {
-	tmpPath := fmt.Sprintf("%s.tmp", path)
+	tempPath := fmt.Sprintf("%s.tmp", path)
 
-	file, err := ex.storage.Create(tmpPath)
+	logger := ex.logger.With(zap.String("path", path))
+
+	file, err := ex.storage.Create(tempPath)
 	if err != nil {
-		ex.logger.Error("Failed to create file", zap.String("path", path), zap.Error(err))
+		logger.Error("Failed to create temporary file", zap.Error(err))
 		return err
 	}
-	defer file.Close()
+
+	fileClosed := false
+	fileRenamed := false
+
+	cleanupFile := func() {
+		if !fileClosed {
+			err := file.Close()
+			if err != nil {
+				logger.Error("Failed to close temporary file", zap.Error(err))
+			}
+			fileClosed = true
+		}
+		if !fileRenamed {
+			err := ex.storage.Remove(tempPath)
+			if err != nil {
+				logger.Error("Failed to delete temporary file", zap.Error(err))
+			}
+			fileRenamed = true
+		}
+	}
+
+	defer cleanupFile()
 
 	bufferedFile := bufio.NewWriterSize(file, bufferSize)
-
 	gzipFile := gzip.NewWriter(bufferedFile)
-	defer gzipFile.Close()
 
 	copyQuery := fmt.Sprintf("COPY (%s) TO STDOUT WITH (FORMAT csv, HEADER)", query)
 	_, err = ex.db.PgConn().CopyTo(ctx, gzipFile, copyQuery)
 	if err != nil {
-		ex.logger.Error("Failed to export file", zap.String("path", path), zap.Error(err))
+		logger.Error("Failed to export file", zap.Error(err))
 		return err
 	}
 
-	err = gzipFile.Flush()
+	err = gzipFile.Close()
 	if err != nil {
+		logger.Error("Failed to close gzip file", zap.Error(err))
 		return err
 	}
 
 	err = bufferedFile.Flush()
 	if err != nil {
+		logger.Error("Failed to flush buffers", zap.Error(err))
 		return err
 	}
 
-	err = ex.storage.Rename(tmpPath, path)
+	err = file.Close()
 	if err != nil {
-		ex.logger.Error("Failed to rename exported file", zap.String("path", path), zap.Error(err))
+		logger.Error("Failed to close file", zap.Error(err))
 		return err
 	}
+	fileClosed = true
+
+	err = ex.storage.Rename(tempPath, path)
+	if err != nil {
+		logger.Error("Failed to rename exported file", zap.String("path", path), zap.Error(err))
+		return err
+	}
+	fileRenamed = true
 
 	return nil
 }
