@@ -107,7 +107,8 @@ CREATE TABLE public.meta (
     album_artist character varying,
     track_no integer,
     disc_no integer,
-    year integer
+    year integer,
+    gid uuid
 );
 
 
@@ -324,6 +325,8 @@ ALTER TABLE ONLY public.track
 ALTER TABLE ONLY public.track_puid
     ADD CONSTRAINT track_puid_pkey PRIMARY KEY (id);
 
+
+CREATE UNIQUE INDEX meta_idx_gid ON meta (gid) WHERE gid IS NOT NULL;
 
 
 CREATE INDEX fingerprint_idx_created ON public.fingerprint (created);

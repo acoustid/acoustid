@@ -1,0 +1,2 @@
+ALTER TABLE meta ADD gid uuid;
+CREATE UNIQUE INDEX CONCURRENTLY meta_idx_gid ON meta (gid) WHERE gid IS NOT NULL;
