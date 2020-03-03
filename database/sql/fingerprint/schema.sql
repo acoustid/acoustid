@@ -356,8 +356,6 @@ CREATE UNIQUE INDEX track_foreignid_idx_track_id_foreignid ON public.track_forei
 
 
 
-CREATE UNIQUE INDEX track_foreignid_idx_uniq ON public.track_foreignid USING btree (track_id, foreignid_id);
-
 
 
 CREATE INDEX track_idx_gid ON public.track USING btree (gid);
@@ -376,8 +374,6 @@ CREATE UNIQUE INDEX track_mbid_idx_track_id_mbid ON public.track_mbid USING btre
 
 
 
-CREATE UNIQUE INDEX track_mbid_idx_uniq ON public.track_mbid USING btree (track_id, mbid);
-
 
 
 CREATE INDEX track_meta_idx_meta_id ON public.track_meta USING btree (meta_id);
@@ -388,7 +384,6 @@ CREATE UNIQUE INDEX track_meta_idx_track_id_meta ON public.track_meta USING btre
 
 
 
-CREATE UNIQUE INDEX track_meta_idx_uniq ON public.track_meta USING btree (track_id, meta_id);
 
 
 
@@ -400,7 +395,6 @@ CREATE UNIQUE INDEX track_puid_idx_track_id_puid ON public.track_puid USING btre
 
 
 
-CREATE UNIQUE INDEX track_puid_idx_uniq ON public.track_puid USING btree (track_id, puid);
 
 
 
