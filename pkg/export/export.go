@@ -89,7 +89,7 @@ func (ex *exporter) ExportQuery(ctx context.Context, path string, query string) 
 	bufferedFile := bufio.NewWriterSize(file, bufferSize)
 	gzipFile := gzip.NewWriter(bufferedFile)
 
-	copyQuery := fmt.Sprintf("COPY (SELECT row_to_json(r) FROM (%s) r) TO STDOUT", query)
+	copyQuery := fmt.Sprintf("COPY (SELECT json_strip_nulls(row_to_json(r)) FROM (%s) r) TO STDOUT", query)
 	_, err = ex.db.PgConn().CopyTo(ctx, gzipFile, copyQuery)
 	if err != nil {
 		logger.Error("Failed to export file", zap.Error(err))
