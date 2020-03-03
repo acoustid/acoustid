@@ -213,5 +213,9 @@ func ExportAll(logger *zap.Logger, sc StorageConfig, databaseConfig *pgx.ConnCon
 	ex := &exporter{db: db, storage: storage, logger: logger}
 	ex.AddTable("fingerprint-update", ExportFingerprintUpdateQuery, true)
 	ex.AddTable("meta-update", ExportMetaUpdateQuery, true)
+	ex.AddTable("track-update", ExportTrackUpdateQuery, true)
+	ex.AddTable("track_fingerprint-update", ExportTrackFingerprintUpdateQuery, true)
+	ex.AddTable("track_mbid-update", ExportTrackMbidUpdateQuery, true)
+	ex.AddTable("track_puid-update", ExportTrackPuidUpdateQuery, true)
 	return ex.Run()
 }
