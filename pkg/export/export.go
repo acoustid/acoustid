@@ -129,8 +129,8 @@ func (ex *exporter) ExportTableFull(now time.Time, name string, query string) er
 	return errors.New("not implemented")
 }
 
-func (ex *exporter) ExportDailyFile(name string, queryTmpl string, startTime, endTime time.Time) error {
-	file := fmt.Sprintf("%s.daily.%s.jsonl.gz", name, startTime.Format("2006-01-02"))
+func (ex *exporter) ExportFile(name string, queryTmpl string, startTime, endTime time.Time) error {
+	file := fmt.Sprintf("%s-%s.jsonl.gz", startTime.Format("2006-01-02"), name)
 	directory := ex.storage.Join("public-data", startTime.Format("2006"), startTime.Format("2006-01"))
 	path := ex.storage.Join(directory, file)
 
@@ -170,11 +170,11 @@ func (ex *exporter) ExportDailyFile(name string, queryTmpl string, startTime, en
 	return nil
 }
 
-func (ex *exporter) ExportDailyFiles(name string, queryTmpl string, endTime time.Time, dayCount int) error {
+func (ex *exporter) ExportFiles(name string, queryTmpl string, endTime time.Time, dayCount int) error {
 	endTime = time.Date(endTime.Year(), endTime.Month(), endTime.Day(), 0, 0, 0, 0, endTime.Location())
 	for i := 0; i < dayCount; i++ {
 		startTime := endTime.AddDate(0, 0, -1)
-		err := ex.ExportDailyFile(name, queryTmpl, startTime, endTime)
+		err := ex.ExportFile(name, queryTmpl, startTime, endTime)
 		if err != nil {
 			return err
 		}
@@ -188,7 +188,7 @@ func (ex *exporter) Run() error {
 	for _, table := range ex.tables {
 		var err error
 		if table.delta {
-			err = ex.ExportDailyFiles(table.name, table.query, now, 30)
+			err = ex.ExportFiles(table.name, table.query, now, 30)
 		}
 		if err != nil {
 			return err
@@ -211,7 +211,7 @@ func ExportAll(logger *zap.Logger, sc StorageConfig, databaseConfig *pgx.ConnCon
 	defer db.Close(context.Background())
 
 	ex := &exporter{db: db, storage: storage, logger: logger}
-	ex.AddTable("fingerprint", ExportFingerprintDeltaQuery, true)
-	ex.AddTable("meta", ExportMetaDeltaQuery, true)
+	ex.AddTable("fingerprint-update", ExportFingerprintUpdateQuery, true)
+	ex.AddTable("meta-update", ExportMetaUpdateQuery, true)
 	return ex.Run()
 }

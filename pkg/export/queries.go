@@ -5,13 +5,13 @@ type QueryContext struct {
 	EndTime   string
 }
 
-const ExportFingerprintDeltaQuery = `
+const ExportFingerprintUpdateQuery = `
 SELECT id, fingerprint, length, created
 FROM fingerprint
 WHERE created >= '{{.StartTime}}' AND created < '{{.EndTime}}'
 `
 
-const ExportMetaDeltaQuery = `
+const ExportMetaUpdateQuery = `
 SELECT id, track, artist, album, album_artist, track_no, disc_no, year, created
 FROM meta
 WHERE created >= '{{.StartTime}}' AND created < '{{.EndTime}}'
