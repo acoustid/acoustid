@@ -131,7 +131,7 @@ func (ex *exporter) ExportTableFull(now time.Time, name string, query string) er
 
 func (ex *exporter) ExportFile(name string, queryTmpl string, startTime, endTime time.Time) error {
 	file := fmt.Sprintf("%s-%s.jsonl.gz", startTime.Format("2006-01-02"), name)
-	directory := ex.storage.Join("public-data", startTime.Format("2006"), startTime.Format("2006-01"))
+	directory := ex.storage.Join(startTime.Format("2006"), startTime.Format("2006-01"))
 	path := ex.storage.Join(directory, file)
 
 	logger := ex.logger.With(zap.String("name", name), zap.String("path", path))

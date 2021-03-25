@@ -36,7 +36,6 @@ type ProxyFilesystem struct {
 }
 
 func (fs *ProxyFilesystem) Open(path string) (http.File, error) {
-	path = fs.storage.Join("public-data", path)
 	fs.logger.Info("open", zap.String("path", path))
 	file, err := fs.storage.Open(path)
 	if err != nil {
