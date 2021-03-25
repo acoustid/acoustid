@@ -169,27 +169,27 @@ func (ex *exporter) ExportFile(name string, queryTmpl string, startTime, endTime
 	}
 	if fileExists {
 		logger.Debug("File already exists")
-		return nil
 	}
+	else {
+		logger.Info("Exporting file")
 
-	logger.Info("Exporting file")
+		err = EnsureDirExists(ex.storage, directory)
+		if err != nil {
+			logger.Error("Failed to create parent directory", zap.Error(err))
+			return err
+		}
 
-	err = EnsureDirExists(ex.storage, directory)
-	if err != nil {
-		logger.Error("Failed to create parent directory", zap.Error(err))
-		return err
-	}
+		query, err := ex.RenderQueryTemplate(queryTmpl, startTime, endTime)
+		if err != nil {
+			logger.Error("Failed to render query template", zap.Error(err))
+			return err
+		}
 
-	query, err := ex.RenderQueryTemplate(queryTmpl, startTime, endTime)
-	if err != nil {
-		logger.Error("Failed to render query template", zap.Error(err))
-		return err
-	}
-
-	err = ex.ExportQuery(context.Background(), path, query)
-	if err != nil {
-		logger.Error("Failed to export file", zap.Error(err))
-		return err
+		err = ex.ExportQuery(context.Background(), path, query)
+		if err != nil {
+			logger.Error("Failed to export file", zap.Error(err))
+			return err
+		}
 	}
 
 	err = ex.DeleteTempFiles(name, startTime)
