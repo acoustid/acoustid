@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v4"
 	"go.uber.org/zap"
 	"math/rand"
+	"strings"
 	"text/template"
 	"time"
 )
@@ -53,12 +54,15 @@ func (ex *exporter) RenderQueryTemplate(queryTmpl string, startTime, endTime tim
 	return buf.String(), nil
 }
 
-func (ex *exporter) ExportQuery(ctx context.Context, path string, query string) error {
-	dir, file := ex.storage.Split(path)
-	tempPath := ex.storage.Join(dir, fmt.Sprintf(".%s.%d.tmp", file, rand.Int()))
+func (ex *exporter) makeTempPath(path string) string {
+	directory, fileName := ex.storage.Split(path)
+	return ex.storage.Join(directory, fmt.Sprintf(".%s.%d.tmp", fileName, rand.Int()))
+}
 
+func (ex *exporter) ExportQuery(ctx context.Context, path string, query string) error {
 	logger := ex.logger.With(zap.String("path", path))
 
+	tempPath := ex.makeTempPath(path)
 	file, err := ex.storage.Create(tempPath)
 	if err != nil {
 		logger.Error("Failed to create temporary file", zap.Error(err))
@@ -130,10 +134,30 @@ func (ex *exporter) ExportTableFull(now time.Time, name string, query string) er
 	return errors.New("not implemented")
 }
 
-func (ex *exporter) ExportFile(name string, queryTmpl string, startTime, endTime time.Time) error {
-	file := fmt.Sprintf("%s-%s.jsonl.gz", startTime.Format("2006-01-02"), name)
+func (ex *exporter) DeleteTempFiles(name string, startTime time.Time) error {
+	fileName := fmt.Sprintf("%s-%s.jsonl.gz", startTime.Format("2006-01-02"), name)
 	directory := ex.storage.Join(startTime.Format("2006"), startTime.Format("2006-01"))
-	path := ex.storage.Join(directory, file)
+	files, err := ex.storage.ReadDir(directory)
+	if err != nil {
+		ex.logger.Error("Failed to list files", zap.Error(err))
+		return err
+	}
+	for _, file := range files {
+		if strings.Contains(file.Name(), fileName) && strings.HasSuffix(file.Name(), ".tmp") {
+			path := ex.storage.Join(directory, file.Name())
+			err = ex.storage.Remove(path)
+			if err != nil {
+				ex.logger.Error("Failed to delete temporary file", zap.Error(err), zap.String("path", path))
+			}
+		}
+	}
+	return nil
+}
+
+func (ex *exporter) ExportFile(name string, queryTmpl string, startTime, endTime time.Time) error {
+	fileName := fmt.Sprintf("%s-%s.jsonl.gz", startTime.Format("2006-01-02"), name)
+	directory := ex.storage.Join(startTime.Format("2006"), startTime.Format("2006-01"))
+	path := ex.storage.Join(directory, fileName)
 
 	logger := ex.logger.With(zap.String("name", name), zap.String("path", path))
 	defer logger.Sync()
@@ -165,6 +189,12 @@ func (ex *exporter) ExportFile(name string, queryTmpl string, startTime, endTime
 	err = ex.ExportQuery(context.Background(), path, query)
 	if err != nil {
 		logger.Error("Failed to export file", zap.Error(err))
+		return err
+	}
+
+	err = ex.DeleteTempFiles(name, startTime)
+	if err != nil {
+		logger.Error("Failed to delete temporary file", zap.Error(err))
 		return err
 	}
 

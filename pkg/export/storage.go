@@ -30,6 +30,7 @@ type Storage interface {
 	Remove(path string) error
 	Rename(oldPath, newPath string) error
 	Join(elem ...string) string
+	Split(path string) (string, string)
 }
 
 type StorageConfig struct {
