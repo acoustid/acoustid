@@ -93,6 +93,10 @@ func (c *StorageClient) Join(elem ...string) string {
 	return sftp.Join(elem...)
 }
 
+func (c *StorageClient) Split(path string) (dir, file string) {
+	return sftp.Split(path)
+}
+
 func NewStorageClient(logger *zap.Logger, sc StorageConfig) (*StorageClient, error) {
 	config := &ssh.ClientConfig{
 		User: sc.User,

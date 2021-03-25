@@ -54,7 +54,8 @@ func (ex *exporter) RenderQueryTemplate(queryTmpl string, startTime, endTime tim
 }
 
 func (ex *exporter) ExportQuery(ctx context.Context, path string, query string) error {
-	tempPath := fmt.Sprintf("%s.%d.tmp", path, rand.Int())
+	dir, file := ex.storage.Split(path)
+	tempPath := ex.storage.Join(dir, fmt.Sprintf(".%s.%d.tmp", file, rand.Int()))
 
 	logger := ex.logger.With(zap.String("path", path))
 
