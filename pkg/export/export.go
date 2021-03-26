@@ -169,8 +169,7 @@ func (ex *exporter) ExportFile(name string, queryTmpl string, startTime, endTime
 	}
 	if fileExists {
 		logger.Debug("File already exists")
-	}
-	else {
+	} else {
 		logger.Info("Exporting file")
 
 		err = EnsureDirExists(ex.storage, directory)
