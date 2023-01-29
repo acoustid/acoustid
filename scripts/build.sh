@@ -2,4 +2,8 @@
 
 set -eux
 
-go build ./cmd/acoustid
+cd $(dirname $0)/../
+
+for name in cmd/*; do
+  go build -o bin/$(basename $name) ./$name
+done

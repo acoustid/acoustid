@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+
+set -eux
+
+cd $(dirname $0)/../
+
+go fmt ./...
+go vet ./...
+go test -v ./{cmd,pkg}/...
