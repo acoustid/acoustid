@@ -155,7 +155,7 @@ func (ex *exporter) DeleteTempFiles(name string, startTime time.Time) error {
 	return nil
 }
 
-func (ex *exporter) ExportFile(name string, queryTmpl string, startTime, endTime time.Time) error {
+func (ex *exporter) ExportDeltaFile(name string, queryTmpl string, startTime, endTime time.Time) error {
 	fileName := fmt.Sprintf("%s-%s.jsonl.gz", startTime.Format("2006-01-02"), name)
 	directory := ex.storage.Join(startTime.Format("2006"), startTime.Format("2006-01"))
 	path := ex.storage.Join(directory, fileName)
@@ -201,29 +201,21 @@ func (ex *exporter) ExportFile(name string, queryTmpl string, startTime, endTime
 	return nil
 }
 
-func (ex *exporter) ExportFiles(name string, queryTmpl string, endTime time.Time, dayCount int) error {
-	endTime = time.Date(endTime.Year(), endTime.Month(), endTime.Day(), 0, 0, 0, 0, endTime.Location())
-	for i := 0; i < dayCount; i++ {
-		startTime := endTime.AddDate(0, 0, -1)
-		err := ex.ExportFile(name, queryTmpl, startTime, endTime)
-		if err != nil {
-			return err
-		}
-		endTime = startTime
-	}
-	return nil
-}
-
 func (ex *exporter) Run() error {
 	now := time.Now()
-	for _, table := range ex.tables {
-		var err error
-		if table.delta {
-			err = ex.ExportFiles(table.name, table.query, now, ex.maxDays)
+	endTime := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	for i := 0; i < ex.maxDays; i++ {
+		startTime := endTime.AddDate(0, 0, -1)
+		for _, table := range ex.tables {
+			if !table.delta {
+				continue
+			}
+			err := ex.ExportDeltaFile(table.name, table.query, startTime, endTime)
+			if err != nil {
+				return err
+			}
 		}
-		if err != nil {
-			return err
-		}
+		endTime = startTime
 	}
 	return nil
 }
