@@ -247,5 +247,6 @@ func ExportAll(logger *zap.Logger, sc StorageConfig, databaseConfig *pgx.ConnCon
 	ex.AddTable("track_fingerprint-update", ExportTrackFingerprintUpdateQuery, true)
 	ex.AddTable("track_mbid-update", ExportTrackMbidUpdateQuery, true)
 	ex.AddTable("track_puid-update", ExportTrackPuidUpdateQuery, true)
+	ex.AddTable("track_meta-update", ExportTrackMetaUpdateQuery, true)
 	return ex.Run()
 }
