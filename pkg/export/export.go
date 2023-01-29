@@ -28,6 +28,7 @@ type exporter struct {
 	db      *pgx.Conn
 	storage Storage
 	tables  []exporterTableInfo
+	maxDays int
 }
 
 func (ex *exporter) AddTable(name string, query string, delta bool) {
@@ -218,7 +219,7 @@ func (ex *exporter) Run() error {
 	for _, table := range ex.tables {
 		var err error
 		if table.delta {
-			err = ex.ExportFiles(table.name, table.query, now, 30)
+			err = ex.ExportFiles(table.name, table.query, now, ex.maxDays)
 		}
 		if err != nil {
 			return err
@@ -227,7 +228,7 @@ func (ex *exporter) Run() error {
 	return nil
 }
 
-func ExportAll(logger *zap.Logger, sc StorageConfig, databaseConfig *pgx.ConnConfig) error {
+func ExportAll(logger *zap.Logger, sc StorageConfig, databaseConfig *pgx.ConnConfig, maxDays int) error {
 	storage, err := NewStorageClient(logger, sc)
 	if err != nil {
 		return err
@@ -240,7 +241,7 @@ func ExportAll(logger *zap.Logger, sc StorageConfig, databaseConfig *pgx.ConnCon
 	}
 	defer db.Close(context.Background())
 
-	ex := &exporter{db: db, storage: storage, logger: logger}
+	ex := &exporter{db: db, storage: storage, logger: logger, maxDays: maxDays}
 	ex.AddTable("fingerprint-update", ExportFingerprintUpdateQuery, true)
 	ex.AddTable("meta-update", ExportMetaUpdateQuery, true)
 	ex.AddTable("track-update", ExportTrackUpdateQuery, true)

@@ -78,13 +78,19 @@ var dataExportCmd = &cobra.Command{
 			return err
 		}
 
-		return export.ExportAll(logger, *storage, db)
+		maxDays := viper.GetInt("export.max-days")
+
+		return export.ExportAll(logger, *storage, db, maxDays)
 	},
 }
 
 func init() {
 	dataCmd.AddCommand(dataExportCmd)
 	dataCmd.AddCommand(dataProxyCmd)
+
+	dataExportCmd.Flags().Int("max-days", 30, "Maximum number of days to export")
+
+	viper.BindPFlag("export.max-days", dataExportCmd.Flags().Lookup("max-days"))
 
 	dataExportCmd.Flags().String("storage-host", "", "URL of the WebDAV server where data files are stored")
 	dataExportCmd.Flags().Int("storage-port", 22, "")
