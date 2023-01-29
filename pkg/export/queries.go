@@ -52,3 +52,12 @@ WHERE
   OR
   (updated >= '{{.StartTime}}' AND updated < '{{.EndTime}}')
 `
+
+const ExportTrackMetaUpdateQuery = `
+SELECT id, track_id, meta_id, submission_count, created, updated
+FROM track_meta
+WHERE
+  (created >= '{{.StartTime}}' AND created < '{{.EndTime}}')
+  OR
+  (updated >= '{{.StartTime}}' AND updated < '{{.EndTime}}')
+`
